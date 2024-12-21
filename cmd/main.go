@@ -9,17 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WhiCu/p2pFileShare/config"
 	"github.com/WhiCu/p2pFileShare/peer"
+	"github.com/WhiCu/p2pFileShare/peer/connection"
 )
 
 func main() {
 
-	port := config.MustGet("PORT_PEER")
+	port := "8080"
 	if len(os.Args) > 1 {
 		port = os.Args[1]
 	}
-	p := peer.NewTCPPeer(config.MustGet("HOST_PEER"), port)
+	p := peer.NewTCPPeer("localhost", port, "Max")
 
 	//p.StartBootstrap(config.MustGet("BOOTSTRAP_PORT"))
 	go p.StartTCPListener()
@@ -32,16 +32,33 @@ func main() {
 
 	consoleReader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("> ")
-		text, _ := consoleReader.ReadString('\n')
-		text = strings.TrimSpace(text)
+		var text string
 
-		if text == "exit" {
+		text += fmt.Sprintf("Текущий узел: %s\n", p.Addr())
+
+		text += "Текущие подключения:\n"
+
+		p.Connections.Range(func(key, value any) bool {
+			text += fmt.Sprintf("%s", key)
+			if value.(*connection.Connection).Username != "" {
+				text += " (" + value.(*connection.Connection).Username + ")\n"
+			}
+			text += "\n"
+			return true
+		})
+
+		text += "Ваше Сообщение\n>"
+		time.Sleep(100 * time.Millisecond)
+		fmt.Println(text)
+		message, _ := consoleReader.ReadString('\n')
+		message = strings.TrimSpace(message)
+
+		if message == "exit" {
 			fmt.Println("Выход...")
 			break
 		}
 
-		p.SendMessageToPeers(text)
+		p.SendMessageToPeers(message)
 
 		// if strings.HasPrefix(text, "file ") {
 		// 	filePath := strings.TrimPrefix(text, "file ")

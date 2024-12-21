@@ -2,7 +2,6 @@ package peer
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -23,6 +22,7 @@ const (
 // Также управляет прослушиванием входящих соединений
 
 type Peer struct {
+	Username    string       // Имя пользователя
 	Host        string       // Хост узла (IP-адрес)
 	Port        string       // Порт, на котором работает узел
 	Connections *sync.Map    // Список активных соединений с другими узлами
@@ -33,8 +33,9 @@ type Peer struct {
 }
 
 // NewTCPPeer создаёт новый узел (Peer) с указанным хостом и портом
-func NewTCPPeer(host string, port string) *Peer {
+func NewTCPPeer(host string, port string, username string) *Peer {
 	return &Peer{
+		Username:    username,
 		Host:        host,
 		Port:        port,
 		Connections: &sync.Map{},
@@ -110,7 +111,11 @@ func (p *Peer) acceptIncomingConnections() {
 // registerConnection регистрирует новое соединение с удалённым узлом
 // Подключение добавляется в список активных соединений, а приём сообщений с узла обрабатывается в отдельной горутине
 func (p *Peer) registerConnection(address string, conn net.Conn) {
-	c := connection.NewConnection(conn)
+	info := message.Message{
+		Type:   "info",
+		Sender: p.Username,
+	}
+	c := connection.NewConnection(conn, info)
 	p.Connections.Store(address, c)
 	log.Printf("Подключение к узлу %s успешно установлено", address)
 	go p.handleConnection(c)
@@ -138,14 +143,15 @@ func (p *Peer) handleConnection(conn *connection.Connection) {
 
 		line := scanner.Text()
 
-		var msg message.Message
-		err := json.Unmarshal([]byte(line), &msg)
+		msg, err := message.MessageFromString(line)
 		if err != nil {
 			fmt.Printf("Ошибка при разборе сообщения: %s\n", err)
 			continue
 		}
 
 		switch msg.Type {
+		case "info":
+			conn.Username = msg.Content
 		case "heartbeat":
 			continue
 		case "text":
@@ -170,6 +176,8 @@ func (p *Peer) SendMessageToPeers(text string) {
 	wg.Wait()
 }
 
+// SendMessageToPeer отправляет текстовое сообщение на соединение с узлом
+// Если wg != nil, то wg.Done() будет вызван после отправки сообщения
 func (p *Peer) SendMessageToPeer(conn *connection.Connection, text string, wg *sync.WaitGroup) {
 	if wg != nil {
 		defer wg.Done()
@@ -181,8 +189,7 @@ func (p *Peer) SendMessageToPeer(conn *connection.Connection, text string, wg *s
 		Content: text,
 	}
 
-	msgBytes, _ := json.Marshal(msg)
-	_, err := conn.Conn.Write(append(msgBytes, '\n'))
+	err := conn.Send(msg)
 	if err != nil {
 		log.Printf("Ошибка при отправке сообщения узлу %s: %v", conn.Addr(), err)
 	}
