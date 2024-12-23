@@ -19,13 +19,13 @@ func main() {
 	if len(os.Args) > 1 {
 		port = os.Args[1]
 	}
-	p := peer.NewTCPPeer("localhost", port, "Max")
+	p := peer.NewTCPPeer("testPeer", "localhost", port)
 
 	//p.StartBootstrap(config.MustGet("BOOTSTRAP_PORT"))
 	go p.StartTCPListener()
 
 	if len(os.Args) > 2 {
-		p.ConnectToPeer(os.Args[2])
+		p.ConnectToPeers(os.Args[2:]...)
 	}
 
 	go waitForExit()
@@ -34,7 +34,14 @@ func main() {
 	for {
 		var text string
 
-		text += fmt.Sprintf("Текущий узел: %s\n", p.Addr())
+		text += fmt.Sprintf("Текущее имя узла: %s\n", p.Username)
+		text += fmt.Sprintf("Текущий ip узла: %s\n", p.Addr())
+
+		text += "Log:\n"
+
+		for _, msg := range p.Log() {
+			text += fmt.Sprintf("%s: %s\n", msg.Sender, msg.Content)
+		}
 
 		text += "Текущие подключения:\n"
 
@@ -44,6 +51,15 @@ func main() {
 				text += " (" + value.(*connection.Connection).Username + ")\n"
 			}
 			text += "\n"
+			return true
+		})
+
+		text += "Текущая история:\n"
+
+		p.Connections.Range(func(key, value any) bool {
+			for _, msg := range value.(*connection.Connection).Chat {
+				text += fmt.Sprintf("%s: %s\n", msg.Sender, msg.Content)
+			}
 			return true
 		})
 
